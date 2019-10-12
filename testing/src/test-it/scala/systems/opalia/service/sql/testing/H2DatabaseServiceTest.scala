@@ -80,25 +80,38 @@ class H2DatabaseServiceTest
     Await.result(bootloader.awaitDown(), Duration.Inf)
   }
 
+  private def executeMultiline(statements: String)(implicit executor: Executor): Unit = {
+
+    statements.split(""";\n""")
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .foreach {
+        statement =>
+
+          Query(statement)
+            .execute[IgnoredResult]()
+      }
+  }
+
   override def beforeEach(): Unit = {
 
     transactional.withTransaction {
       implicit executor =>
 
-        Query(
+        executeMultiline(
           """
             |CREATE TABLE _Person (
             |  id INT NOT NULL,
             |  name VARCHAR(120) NOT NULL,
             |  counter INT NOT NULL,
             |  extra VARCHAR(120) NULL,
-            |  PRIMARY KEY (id),
+            |  PRIMARY KEY (id)
             |);
             |
             |CREATE TABLE _Group (
             |  id INT NOT NULL,
             |  name VARCHAR(120) NOT NULL,
-            |  PRIMARY KEY (id),
+            |  PRIMARY KEY (id)
             |);
             |
             |CREATE TABLE _Membership (
@@ -107,22 +120,22 @@ class H2DatabaseServiceTest
             |  group_id INT NOT NULL,
             |  PRIMARY KEY (id),
             |  FOREIGN KEY (person_id) REFERENCES _Person(id),
-            |  FOREIGN KEY (group_id) REFERENCES _Group(id),
+            |  FOREIGN KEY (group_id) REFERENCES _Group(id)
             |);
             |
             |CREATE TABLE _Relationship (
             |  id INT NOT NULL,
             |  name VARCHAR(120) NOT NULL,
-            |  friend BOOL NULL,
+            |  friend BOOLEAN NULL,
             |  person1_id INT NOT NULL,
             |  person2_id INT NOT NULL,
             |  PRIMARY KEY (id),
             |  FOREIGN KEY (person1_id) REFERENCES _Person(id),
-            |  FOREIGN KEY (person2_id) REFERENCES _Person(id),
+            |  FOREIGN KEY (person2_id) REFERENCES _Person(id)
             |);
             |
             |CREATE TABLE _Values (
-            |  val_boolean BOOL NOT NULL,
+            |  val_boolean BOOLEAN NOT NULL,
             |  val_byte TINYINT NOT NULL,
             |  val_short SMALLINT NOT NULL,
             |  val_int MEDIUMINT NOT NULL,
@@ -135,13 +148,11 @@ class H2DatabaseServiceTest
             |  val_localDate DATE NOT NULL,
             |  val_localTime TIME NOT NULL,
             |  val_localDateTime DATETIME NOT NULL,
-            |  val_binary BINARY NOT NULL,
+            |  val_binary BINARY NOT NULL
             |);
-            |
           """.stripMargin)
-          .execute[IgnoredResult]()
 
-        Query(
+        executeMultiline(
           """
             |INSERT INTO _Person (id, name, counter) VALUES (1, 'Armin', 25);
             |INSERT INTO _Person (id, name, counter) VALUES (2, 'Folker', 28);
@@ -177,7 +188,6 @@ class H2DatabaseServiceTest
             |INSERT INTO _Relationship (id, name, friend, person1_id, person2_id) VALUES (29, 'KNOWS', TRUE, 6, 7);
             |INSERT INTO _Relationship (id, name, friend, person1_id, person2_id) VALUES (30, 'KNOWS', TRUE, 7, 8);
           """.stripMargin)
-          .execute[IgnoredResult]()
     }
   }
 
@@ -186,7 +196,7 @@ class H2DatabaseServiceTest
     transactional.withTransaction {
       implicit executor =>
 
-        Query(
+        executeMultiline(
           """
             |DROP TABLE _Relationship;
             |DROP TABLE _Membership;
@@ -194,7 +204,6 @@ class H2DatabaseServiceTest
             |DROP TABLE _Person;
             |DROP TABLE _Values;
           """.stripMargin)
-          .execute[IgnoredResult]()
     }
   }
 
@@ -207,16 +216,17 @@ class H2DatabaseServiceTest
           Query(
             """
               |SELECT P2.name AS name
-              |FROM _Person P1, _Person P2
+              |FROM _Person P1
+              |CROSS JOIN _Person P2
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group1'
               |INNER JOIN _Membership M2 ON P2.id = M2.person_id
               |INNER JOIN _Group G2 ON M2.group_id = G2.id AND G2.name = 'Group1'
               |INNER JOIN _Relationship R1 ON P1.id = R1.person1_id AND P2.id = R1.person2_id AND R1.name = 'KNOWS'
-              |WHERE P1.name = ? or P1.name = ?;
+              |WHERE P1.name = :name_1 or P1.name = :name_2
             """.stripMargin)
-            .on("1", "Folker")
-            .on("2", "Lorelei")
+            .on("name_1", "Folker")
+            .on("name_2", "Lorelei")
             .execute[IndexedSeqResult]()
             .transform(row => row[String]("name"))
 
@@ -233,14 +243,15 @@ class H2DatabaseServiceTest
           Query(
             """
               |SELECT P2.name AS name, P2.counter AS counter
-              |FROM _Person P1, _Person P2
+              |FROM _Person P1
+              |CROSS JOIN _Person P2
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group1'
               |INNER JOIN _Relationship R1 ON R1.name = 'LOVES' AND
               |((P1.id = R1.person1_id AND P2.id = R1.person2_id) OR (P1.id = R1.person2_id AND P2.id = R1.person1_id))
-              |WHERE P1.name = ?;
+              |WHERE P1.name = :name_1
             """.stripMargin)
-            .on("1", "Armin")
+            .on("name_1", "Armin")
             .execute[SingleResult]()
             .transform(row => row.toJson)
 
@@ -248,7 +259,8 @@ class H2DatabaseServiceTest
           Query(
             """
               |SELECT R2.name AS name, R2.friend AS friend
-              |FROM _Person P1, _Person P2
+              |FROM _Person P1
+              |CROSS JOIN _Person P2
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group1'
               |INNER JOIN _Membership M2 ON P2.id = M2.person_id
@@ -283,9 +295,9 @@ class H2DatabaseServiceTest
               |FROM _Person P1
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group2'
-              |WHERE P1.name = ?;
+              |WHERE P1.name = :name_1
             """.stripMargin)
-            .on("1", "Dagmar")
+            .on("name_1", "Dagmar")
             .execute[SingleOptResult]()
 
         val result2 =
@@ -295,9 +307,9 @@ class H2DatabaseServiceTest
               |FROM _Person P1
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group2'
-              |WHERE P1.name = ?;
+              |WHERE P1.name = :name_1
             """.stripMargin)
-            .on("1", Some("Dagmar"))
+            .on("name_1", Some("Dagmar"))
             .execute[SingleOptResult]()
 
         val result3 =
@@ -307,9 +319,9 @@ class H2DatabaseServiceTest
               |FROM _Person P1
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group2'
-              |WHERE P1.name = ?;
+              |WHERE P1.name = :name_1
             """.stripMargin)
-            .on("1", None)
+            .on("name_1", None)
             .execute[SingleOptResult]()
 
         val result4 =
@@ -319,9 +331,9 @@ class H2DatabaseServiceTest
               |FROM _Person P1
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group2'
-              |WHERE P1.name = ?;
+              |WHERE P1.name = :name_1
             """.stripMargin)
-            .on("1", "Dagmar")
+            .on("name_1", "Dagmar")
             .execute[SingleOptResult]()
 
         val transformer1 =
@@ -363,9 +375,9 @@ class H2DatabaseServiceTest
               |FROM _Person P1
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group1'
-              |WHERE P1.name = ?;
+              |WHERE P1.name = :name_1
             """.stripMargin)
-            .on("1", "Adam")
+            .on("name_1", "Adam")
 
         val queryExpectOne =
           Query(
@@ -374,9 +386,9 @@ class H2DatabaseServiceTest
               |FROM _Person P1
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
               |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group1'
-              |WHERE P1.name = ?;
+              |WHERE P1.name = :name_1
             """.stripMargin)
-            .on("1", "Armin")
+            .on("name_1", "Armin")
 
         val queryExpectMultiple =
           Query(
@@ -384,7 +396,7 @@ class H2DatabaseServiceTest
               |SELECT P1.name AS name
               |FROM _Person P1
               |INNER JOIN _Membership M1 ON P1.id = M1.person_id
-              |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group1';
+              |INNER JOIN _Group G1 ON M1.group_id = G1.id AND G1.name = 'Group1'
             """.stripMargin)
 
         val transformer =
@@ -451,7 +463,7 @@ class H2DatabaseServiceTest
         Query(
           """
             |INSERT INTO _Values
-            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """.stripMargin)
           .on("1", boolean)
           .on("2", byte)

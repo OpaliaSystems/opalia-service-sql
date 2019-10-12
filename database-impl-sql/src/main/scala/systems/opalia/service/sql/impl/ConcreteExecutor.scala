@@ -1,125 +1,166 @@
 package systems.opalia.service.sql.impl
 
-import java.sql._
+import java.sql.{Connection, JDBCType, PreparedStatement}
 import java.time.{LocalDate, LocalDateTime, LocalTime}
+import org.jooq
+import org.jooq.impl.DSL
+import scala.collection.JavaConverters._
 import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.reflect._
 import systems.opalia.interfaces.database._
 import systems.opalia.interfaces.json.JsonAst
+import systems.opalia.interfaces.logging.Logger
 
 
-class ConcreteExecutor(connection: Connection)
+class ConcreteExecutor(logger: Logger,
+                       loggerStats: Logger,
+                       connection: Connection)
   extends Executor {
 
   def execute[R <: Result : ClassTag](clause: String, parameters: Map[String, Any]): R = {
 
-    val statement: PreparedStatement = connection.prepareStatement(clause)
+    val query = DSL.using(connection).parser().parseQuery(clause)
 
     try {
 
-      setValues(statement, parameters.map(x => (x._1.toInt, x._2)))
+      findBinding(query, parameters)
 
-      statement.execute()
+      val sql = query.getSQL()
 
-      val concreteResult =
-        if (classTag[R] == classTag[IgnoredResult]) {
+      logger.debug(s"Apply dialect specific SQL statement: $sql")
 
-          new IgnoredResult {
+      val statement = connection.prepareStatement(sql)
+
+      try {
+
+        setValues(statement, query.getBindValues.asScala.toSeq)
+
+        statement.execute()
+
+        val concreteResult =
+          if (classTag[R] == classTag[IgnoredResult]) {
+
+            new IgnoredResult {
+            }
+
+          } else {
+
+            val metaData = getMetaData(statement)
+            val rows = getValues(statement, metaData)
+            val columnNames = metaData.map(x => x._1)
+            val statistics = JsonAst.JsonObject(ListMap())
+
+            if (classTag[R] == classTag[SingleResult]) {
+
+              if (rows.length != 1)
+                throw new IllegalArgumentException(
+                  s"Expect set of rows with cardinality of 1 but ${rows.length} received.")
+
+              new SingleResult {
+
+                def columns: IndexedSeq[String] =
+                  columnNames
+
+                def meta: JsonAst.JsonObject =
+                  statistics
+
+                def transform[T](f: Row => T): T =
+                  rows.map(new ConcreteRow(_)).map(f).head
+              }
+
+            } else if (classTag[R] == classTag[SingleOptResult]) {
+
+              if (rows.length > 1)
+                throw new IllegalArgumentException(
+                  s"Expect set of rows with cardinality of 0 or 1 but ${rows.length} received.")
+
+              new SingleOptResult {
+
+                def columns: IndexedSeq[String] =
+                  columnNames
+
+                def meta: JsonAst.JsonObject =
+                  statistics
+
+                def transform[T](f: Row => T): Option[T] =
+                  rows.map(new ConcreteRow(_)).map(f).headOption
+              }
+
+            } else if (classTag[R] == classTag[IndexedSeqResult]) {
+
+              new IndexedSeqResult {
+
+                def columns: IndexedSeq[String] =
+                  columnNames
+
+                def meta: JsonAst.JsonObject =
+                  statistics
+
+                def transform[T](f: Row => T): IndexedSeq[T] =
+                  rows.map(new ConcreteRow(_)).map(f)
+              }
+
+            } else if (classTag[R] == classTag[IndexedNonEmptySeqResult]) {
+
+              if (rows.isEmpty)
+                throw new IllegalArgumentException(
+                  s"Expect set of rows with cardinality greater than 1 but ${rows.length} received.")
+
+              new IndexedNonEmptySeqResult {
+
+                def columns: IndexedSeq[String] =
+                  columnNames
+
+                def meta: JsonAst.JsonObject =
+                  statistics
+
+                def transform[T](f: Row => T): IndexedSeq[T] =
+                  rows.map(new ConcreteRow(_)).map(f)
+              }
+
+            } else
+              throw new IllegalArgumentException(
+                "Unsupported type of result class.")
           }
 
-        } else {
+        concreteResult.asInstanceOf[R]
 
-          val metaData = getMetaData(statement)
-          val rows = getValues(statement, metaData)
-          val columnNames = metaData.map(x => x._1)
-          val statistics = JsonAst.JsonObject(ListMap())
+      } finally {
 
-          if (classTag[R] == classTag[SingleResult]) {
-
-            if (rows.length != 1)
-              throw new IllegalArgumentException(
-                s"Expect set of rows with cardinality of 1 but ${rows.length} received.")
-
-            new SingleResult {
-
-              def columns: IndexedSeq[String] =
-                columnNames
-
-              def meta: JsonAst.JsonObject =
-                statistics
-
-              def transform[T](f: Row => T): T =
-                rows.map(new ConcreteRow(_)).map(f).head
-            }
-
-          } else if (classTag[R] == classTag[SingleOptResult]) {
-
-            if (rows.length > 1)
-              throw new IllegalArgumentException(
-                s"Expect set of rows with cardinality of 0 or 1 but ${rows.length} received.")
-
-            new SingleOptResult {
-
-              def columns: IndexedSeq[String] =
-                columnNames
-
-              def meta: JsonAst.JsonObject =
-                statistics
-
-              def transform[T](f: Row => T): Option[T] =
-                rows.map(new ConcreteRow(_)).map(f).headOption
-            }
-
-          } else if (classTag[R] == classTag[IndexedSeqResult]) {
-
-            new IndexedSeqResult {
-
-              def columns: IndexedSeq[String] =
-                columnNames
-
-              def meta: JsonAst.JsonObject =
-                statistics
-
-              def transform[T](f: Row => T): IndexedSeq[T] =
-                rows.map(new ConcreteRow(_)).map(f)
-            }
-
-          } else if (classTag[R] == classTag[IndexedNonEmptySeqResult]) {
-
-            if (rows.isEmpty)
-              throw new IllegalArgumentException(
-                s"Expect set of rows with cardinality greater than 1 but ${rows.length} received.")
-
-            new IndexedNonEmptySeqResult {
-
-              def columns: IndexedSeq[String] =
-                columnNames
-
-              def meta: JsonAst.JsonObject =
-                statistics
-
-              def transform[T](f: Row => T): IndexedSeq[T] =
-                rows.map(new ConcreteRow(_)).map(f)
-            }
-
-          } else
-            throw new IllegalArgumentException(
-              "Unsupported type of result class.")
-        }
-
-      concreteResult.asInstanceOf[R]
+        statement.close()
+      }
 
     } finally {
 
-      statement.close()
+      query.close()
     }
   }
 
-  private def setValues(statement: PreparedStatement, parameter: Map[Int, Any]): Unit = {
+  private def findBinding(query: jooq.Query, parameters: Map[String, Any]): Unit = {
 
-    parameter
-      .map(x => (x._1.toInt, x._2))
+    parameters
+      .foreach {
+        case (key, value) =>
+
+          value match {
+            case null => query.bind(key, null)
+            case x: Char => query.bind(key, x.toString)
+            case x: BigDecimal => query.bind(key, x.underlying)
+            case x: LocalDate => query.bind(key, java.sql.Date.valueOf(x))
+            case x: LocalTime => query.bind(key, java.sql.Time.valueOf(x))
+            case x: LocalDateTime => query.bind(key, java.sql.Timestamp.valueOf(x))
+            case x: Seq[_] if (x.forall(_.isInstanceOf[Byte])) =>
+              query.bind(key, x.map(_.asInstanceOf[Byte]).toArray)
+            case x => query.bind(key, x)
+          }
+      }
+  }
+
+  private def setValues(statement: PreparedStatement, parameters: Seq[Any]): Unit = {
+
+    parameters
+      .zipWithIndex.map(x => (x._2 + 1) -> x._1)
       .foreach {
         case (key, value) =>
 
@@ -132,16 +173,20 @@ class ConcreteExecutor(connection: Connection)
             case x: Long => statement.setLong(key, x)
             case x: Float => statement.setFloat(key, x)
             case x: Double => statement.setDouble(key, x)
-            case x: Char => statement.setNString(key, x.toString)
-            case x: String => statement.setNString(key, x)
+            case x: Char => statement.setString(key, x.toString)
+            case x: String => statement.setString(key, x)
             case x: BigDecimal => statement.setBigDecimal(key, x.underlying)
-            case x: LocalDate => statement.setDate(key, Date.valueOf(x))
-            case x: LocalTime => statement.setTime(key, Time.valueOf(x))
-            case x: LocalDateTime => statement.setTimestamp(key, Timestamp.valueOf(x))
-
+            case x: LocalDate => statement.setDate(key, java.sql.Date.valueOf(x))
+            case x: LocalTime => statement.setTime(key, java.sql.Time.valueOf(x))
+            case x: LocalDateTime => statement.setTimestamp(key, java.sql.Timestamp.valueOf(x))
+            case x: java.math.BigDecimal => statement.setBigDecimal(key, x)
+            case x: java.sql.Date => statement.setDate(key, x)
+            case x: java.sql.Time => statement.setTime(key, x)
+            case x: java.sql.Timestamp => statement.setTimestamp(key, x)
             case x: Seq[_] if (x.forall(_.isInstanceOf[Byte])) =>
               statement.setBytes(key, x.map(_.asInstanceOf[Byte]).toArray)
-
+            case x: Array[_] if (x.forall(_.isInstanceOf[Byte])) =>
+              statement.setBytes(key, x.map(_.asInstanceOf[Byte]))
             case _ =>
               throw new IllegalArgumentException(
                 s"Cannot put unsupported type with value $value (${value.getClass.getName}) at key $key.")

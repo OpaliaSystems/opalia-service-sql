@@ -20,7 +20,7 @@ final class TransactionalImpl(logger: Logger,
 
         connection.setAutoCommit(false)
 
-        val result = block(new ConcreteExecutor(connection))
+        val result = block(new ConcreteExecutor(logger, loggerStats, connection))
 
         connection.commit()
 

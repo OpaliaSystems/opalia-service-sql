@@ -25,6 +25,8 @@ final class DatabaseServiceBootable(config: BundleConfig,
   dataSource.setMaxActive(config.maxActive)
   dataSource.setMaxOpenPreparedStatements(config.maxOpenPreparedStatements)
 
+  sys.props("org.jooq.no-logo") = "true"
+
   def newTransactional(): Transactional =
     new TransactionalImpl(logger, loggerStats, dataSource.getConnection)
 
