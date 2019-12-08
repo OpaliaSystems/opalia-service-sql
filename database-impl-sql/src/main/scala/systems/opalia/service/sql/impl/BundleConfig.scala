@@ -1,6 +1,7 @@
 package systems.opalia.service.sql.impl
 
 import com.typesafe.config.Config
+import java.sql.Connection
 import systems.opalia.commons.configuration.ConfigHelper._
 import systems.opalia.commons.configuration.Reader._
 
@@ -17,6 +18,16 @@ final class BundleConfig(config: Config) {
   val maxIdle: Int = config.as[Int]("database.jdbc.connection.max-idle")
   val maxActive: Int = config.as[Int]("database.jdbc.connection.max-active")
   val maxOpenPreparedStatements: Int = config.as[Int]("database.jdbc.connection.max-open-prepared-statements")
+
+  val isolationLevel: Int =
+    config.as[String]("database.jdbc.connection.isolation-level").toUpperCase match {
+      case "NONE" => Connection.TRANSACTION_NONE
+      case "READ_UNCOMMITTED" => Connection.TRANSACTION_READ_UNCOMMITTED
+      case "READ_COMMITTED " => Connection.TRANSACTION_READ_COMMITTED
+      case "REPEATABLE_READ" => Connection.TRANSACTION_REPEATABLE_READ
+      case "SERIALIZABLE" => Connection.TRANSACTION_SERIALIZABLE
+      case _ => throw new IllegalArgumentException("Expect valid isolation level.")
+    }
 
   if (minIdle < 1 || maxIdle < 1 || maxActive < 1 || maxOpenPreparedStatements < 1)
     throw new IllegalArgumentException("Expect connection pool limits greater than one.")
