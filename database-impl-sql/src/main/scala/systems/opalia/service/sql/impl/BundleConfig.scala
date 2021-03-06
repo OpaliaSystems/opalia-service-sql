@@ -16,7 +16,7 @@ final class BundleConfig(config: Config) {
 
   val minIdle: Int = config.as[Int]("database.jdbc.connection.min-idle")
   val maxIdle: Int = config.as[Int]("database.jdbc.connection.max-idle")
-  val maxActive: Int = config.as[Int]("database.jdbc.connection.max-active")
+  val maxTotal: Int = config.as[Int]("database.jdbc.connection.max-total")
   val maxOpenPreparedStatements: Int = config.as[Int]("database.jdbc.connection.max-open-prepared-statements")
 
   val isolationLevel: Int =
@@ -29,6 +29,6 @@ final class BundleConfig(config: Config) {
       case _ => throw new IllegalArgumentException("Expect valid isolation level.")
     }
 
-  if (minIdle < 1 || maxIdle < 1 || maxActive < 1 || maxOpenPreparedStatements < 1)
+  if (minIdle < 1 || maxIdle < 1 || maxTotal < 1 || maxOpenPreparedStatements < 1)
     throw new IllegalArgumentException("Expect connection pool limits greater than one.")
 }

@@ -3,7 +3,9 @@ package systems.opalia.service.sql.testing
 import com.typesafe.config._
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDate, LocalDateTime, LocalTime}
-import org.scalatest._
+import org.scalatest.flatspec._
+import org.scalatest.matchers.should._
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import play.api.libs.json.Json
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
@@ -20,7 +22,7 @@ import systems.opalia.interfaces.soa.osgi.ServiceManager
 
 
 class H2DatabaseServiceTest
-  extends FlatSpec
+  extends AnyFlatSpec
     with BeforeAndAfterAll
     with BeforeAndAfterEach
     with Matchers {

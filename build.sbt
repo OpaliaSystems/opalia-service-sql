@@ -40,7 +40,7 @@ lazy val `testing` =
         "systems.opalia" %% "interfaces" % mInterfacesVersion,
         "systems.opalia" %% "commons" % mCommonsVersion,
         "systems.opalia" %% "bootloader" % mBootloaderVersion,
-        "org.scalatest" %% "scalatest" % "3.0.7" % "test"
+        "org.scalatest" %% "scalatest" % "3.2.5" % "test"
       )
     )
 
@@ -67,16 +67,16 @@ lazy val `database-impl-sql` =
       ),
 
       libraryDependencies ++= Seq(
-        "org.osgi" % "org.osgi.core" % "6.0.0" % "provided",
+        "org.osgi" % "osgi.core" % "8.0.0" % "provided",
         "org.osgi" % "org.osgi.service.component.annotations" % "1.4.0",
         "org.osgi" % "org.osgi.service.jdbc" % "1.0.0",
         "systems.opalia" %% "interfaces" % mInterfacesVersion % "provided",
         "systems.opalia" %% "commons" % mCommonsVersion excludeAll (exclusionRules: _*),
-        "commons-dbcp" % "commons-dbcp" % "1.4",
-        "org.jooq" % "jooq" % "3.12.1",
+        "org.apache.commons" % "commons-dbcp2" % "2.8.0",
+        "org.jooq" % "jooq" % "3.12.4",
         "com.h2database" % "h2" % "1.4.199",
-        "org.postgresql" % "postgresql" % "42.2.8",
-        "org.mariadb.jdbc" % "mariadb-java-client" % "2.5.0",
-        "com.microsoft.sqlserver" % "mssql-jdbc" % "7.4.1.jre8"
+        "org.postgresql" % "postgresql" % "42.2.19",
+        "org.mariadb.jdbc" % "mariadb-java-client" % "2.7.2",
+        "com.microsoft.sqlserver" % "mssql-jdbc" % "9.2.1.jre8"
       )
     )

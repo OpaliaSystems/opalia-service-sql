@@ -1,6 +1,6 @@
 package systems.opalia.service.sql.impl
 
-import org.apache.commons.dbcp.BasicDataSource
+import org.apache.commons.dbcp2.BasicDataSource
 import systems.opalia.interfaces.database._
 import systems.opalia.interfaces.logging.LoggingService
 import systems.opalia.interfaces.soa.Bootable
@@ -22,7 +22,7 @@ final class DatabaseServiceBootable(config: BundleConfig,
 
   dataSource.setMinIdle(config.minIdle)
   dataSource.setMaxIdle(config.maxIdle)
-  dataSource.setMaxActive(config.maxActive)
+  dataSource.setMaxTotal(config.maxTotal)
   dataSource.setMaxOpenPreparedStatements(config.maxOpenPreparedStatements)
 
   dataSource.setDefaultTransactionIsolation(config.isolationLevel)
