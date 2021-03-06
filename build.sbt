@@ -74,8 +74,8 @@ lazy val `database-impl-sql` =
         "systems.opalia" %% "commons" % mCommonsVersion excludeAll (exclusionRules: _*),
         "commons-dbcp" % "commons-dbcp" % "1.4",
         "com.h2database" % "h2" % "1.4.199",
-        "postgresql" % "postgresql" % "9.1-901-1.jdbc4",
-        "org.mariadb.jdbc" % "mariadb-java-client" % "2.4.1",
-        "com.microsoft.sqlserver" % "mssql-jdbc" % "7.2.1.jre8"
+        "org.postgresql" % "postgresql" % "42.2.8",
+        "org.mariadb.jdbc" % "mariadb-java-client" % "2.5.0",
+        "com.microsoft.sqlserver" % "mssql-jdbc" % "7.4.1.jre8"
       )
     )
