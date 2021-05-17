@@ -56,6 +56,7 @@ class H2DatabaseServiceTest
         .withCacheDirectory(testPath.resolve("felix-cache").normalize())
         .withBundle("systems.opalia" %% "logging-impl-logback" % "1.0.0")
         .withBundle("systems.opalia" %% "database-impl-sql" % "1.0.0")
+        .withBundle("org.osgi" % "org.osgi.service.log" % "1.5.0")
         .withBundle("org.osgi" % "org.osgi.util.tracker" % "1.5.2")
         .withBundle("org.osgi" % "org.osgi.util.promise" % "1.1.1")
         .withBundle("org.osgi" % "org.osgi.util.function" % "1.1.0")
