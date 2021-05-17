@@ -6,9 +6,7 @@ import systems.opalia.interfaces.database._
 import systems.opalia.interfaces.logging.Logger
 
 
-final class TransactionalImpl(logger: Logger,
-                              loggerStats: Logger,
-                              connection: Connection)
+final class TransactionalImpl(logger: Logger, connection: Connection)
   extends Transactional {
 
   def withTransaction[T](block: (Executor) => T): T = {
@@ -20,7 +18,7 @@ final class TransactionalImpl(logger: Logger,
 
         connection.setAutoCommit(false)
 
-        val result = block(new ConcreteExecutor(logger, loggerStats, connection))
+        val result = block(new ConcreteExecutor(logger, connection))
 
         connection.commit()
 
@@ -38,7 +36,7 @@ final class TransactionalImpl(logger: Logger,
 
     val end = Instant.now.toEpochMilli
 
-    loggerStats.debug(s"A transaction was performed in ${end - start} ms.")
+    logger.trace(s"A transaction was performed in ${end - start} ms.")
 
     result
   }

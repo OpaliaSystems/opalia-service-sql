@@ -14,7 +14,6 @@ import systems.opalia.interfaces.logging.Logger
 
 
 class ConcreteExecutor(logger: Logger,
-                       loggerStats: Logger,
                        connection: Connection)
   extends Executor {
 
@@ -28,7 +27,7 @@ class ConcreteExecutor(logger: Logger,
 
       val sql = query.getSQL()
 
-      logger.debug(s"Apply dialect specific SQL statement: $sql")
+      logger.trace(s"Apply dialect specific SQL statement: $sql")
 
       val statement = connection.prepareStatement(sql)
 

@@ -12,7 +12,7 @@ final class DatabaseServiceBootable(config: BundleConfig,
     with Bootable[Unit, Unit] {
 
   private val logger = loggingService.newLogger(classOf[DatabaseService].getName)
-  private val loggerStats = loggingService.newLogger(s"${classOf[DatabaseService].getName}-statistics")
+
   private val dataSource = new BasicDataSource()
 
   dataSource.setDriverClassName(config.driver)
@@ -30,7 +30,7 @@ final class DatabaseServiceBootable(config: BundleConfig,
   sys.props("org.jooq.no-logo") = "true"
 
   def newTransactional(): Transactional =
-    new TransactionalImpl(logger, loggerStats, dataSource.getConnection)
+    new TransactionalImpl(logger, dataSource.getConnection)
 
   def backup(): Unit =
     throw new UnsupportedOperationException("Does not support management of hot backups for SQL databases.")
