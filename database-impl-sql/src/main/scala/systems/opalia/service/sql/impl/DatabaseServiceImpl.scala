@@ -4,7 +4,7 @@ import org.osgi.framework.BundleContext
 import org.osgi.service.component.annotations._
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import systems.opalia.interfaces.database.{DatabaseService, Transactional}
+import systems.opalia.interfaces.database._
 import systems.opalia.interfaces.logging.LoggingService
 import systems.opalia.interfaces.soa.ConfigurationService
 import systems.opalia.interfaces.soa.osgi.ServiceManager
@@ -47,9 +47,6 @@ class DatabaseServiceImpl
     bootable = null
   }
 
-  def newTransactional(): Transactional =
-    bootable.newTransactional()
-
-  def backup(): Unit =
-    bootable.backup()
+  def withTransaction[T](block: (QueryFactory) => T): T =
+    bootable.withTransaction(block)
 }

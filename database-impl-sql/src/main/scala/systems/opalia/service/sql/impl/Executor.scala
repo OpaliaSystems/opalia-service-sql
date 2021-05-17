@@ -8,14 +8,14 @@ import scala.collection.JavaConverters._
 import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.reflect._
+import scala.util.{Failure, Success}
+import systems.opalia.commons.codec.Hex
 import systems.opalia.interfaces.database._
 import systems.opalia.interfaces.json.JsonAst
 import systems.opalia.interfaces.logging.Logger
 
 
-class ConcreteExecutor(logger: Logger,
-                       connection: Connection)
-  extends Executor {
+class Executor(logger: Logger, connection: Connection) {
 
   def execute[R <: Result : ClassTag](clause: String, parameters: Map[String, Any]): R = {
 
@@ -45,10 +45,9 @@ class ConcreteExecutor(logger: Logger,
 
           } else {
 
-            val metaData = getMetaData(statement)
-            val rows = getValues(statement, metaData)
-            val columnNames = metaData.map(x => x._1)
-            val statistics = JsonAst.JsonObject(ListMap())
+            val metadata = getMetadata(statement)
+            val rows = getValues(statement, metadata)
+            val columnNames = metadata.map(x => x._1)
 
             if (classTag[R] == classTag[SingleResult]) {
 
@@ -62,10 +61,10 @@ class ConcreteExecutor(logger: Logger,
                   columnNames
 
                 def meta: JsonAst.JsonObject =
-                  statistics
+                  JsonAst.JsonObject(ListMap())
 
                 def transform[T](f: Row => T): T =
-                  rows.map(new ConcreteRow(_)).map(f).head
+                  rows.map(new RowImpl(_)).map(f).head
               }
 
             } else if (classTag[R] == classTag[SingleOptResult]) {
@@ -80,10 +79,10 @@ class ConcreteExecutor(logger: Logger,
                   columnNames
 
                 def meta: JsonAst.JsonObject =
-                  statistics
+                  JsonAst.JsonObject(ListMap())
 
                 def transform[T](f: Row => T): Option[T] =
-                  rows.map(new ConcreteRow(_)).map(f).headOption
+                  rows.map(new RowImpl(_)).map(f).headOption
               }
 
             } else if (classTag[R] == classTag[IndexedSeqResult]) {
@@ -94,10 +93,10 @@ class ConcreteExecutor(logger: Logger,
                   columnNames
 
                 def meta: JsonAst.JsonObject =
-                  statistics
+                  JsonAst.JsonObject(ListMap())
 
                 def transform[T](f: Row => T): IndexedSeq[T] =
-                  rows.map(new ConcreteRow(_)).map(f)
+                  rows.map(new RowImpl(_)).map(f)
               }
 
             } else if (classTag[R] == classTag[IndexedNonEmptySeqResult]) {
@@ -112,10 +111,10 @@ class ConcreteExecutor(logger: Logger,
                   columnNames
 
                 def meta: JsonAst.JsonObject =
-                  statistics
+                  JsonAst.JsonObject(ListMap())
 
                 def transform[T](f: Row => T): IndexedSeq[T] =
-                  rows.map(new ConcreteRow(_)).map(f)
+                  rows.map(new RowImpl(_)).map(f)
               }
 
             } else
@@ -133,6 +132,15 @@ class ConcreteExecutor(logger: Logger,
     } finally {
 
       query.close()
+    }
+  }
+
+  def newQueryFactory(): QueryFactory = {
+
+    new QueryFactory {
+
+      def newQuery(clause: String): Query =
+        new QueryImpl(clause)
     }
   }
 
@@ -255,16 +263,78 @@ class ConcreteExecutor(logger: Logger,
     buffer.toVector
   }
 
-  private def getMetaData(statement: PreparedStatement): Vector[(String, JDBCType)] = {
+  private def getMetadata(statement: PreparedStatement): Vector[(String, JDBCType)] = {
 
-    val metaData = statement.getMetaData
+    val metadata = statement.getMetaData
 
-    if (metaData == null)
+    if (metadata == null)
       Vector.empty
     else {
 
-      (for (i <- 1 to metaData.getColumnCount) yield
-        (metaData.getColumnLabel(i).toLowerCase, JDBCType.valueOf(metaData.getColumnType(i)))).toVector
+      (for (i <- 1 to metadata.getColumnCount) yield
+        (metadata.getColumnLabel(i).toLowerCase, JDBCType.valueOf(metadata.getColumnType(i)))).toVector
     }
+  }
+
+  private class RowImpl(row: ListMap[String, Any])
+    extends Row {
+
+    def apply[T](column: String)(implicit reader: FieldReader[T]): T = {
+
+      val entry =
+        find(column)
+          .map(x => Success(x))
+          .getOrElse(Failure(new IllegalArgumentException(s"Cannot find column $column.")))
+
+      (for {
+        value <- entry
+        result <- reader(column, value)
+      } yield result).get
+    }
+
+    def toJson: JsonAst.JsonObject =
+      JsonAst.JsonObject(row.map(x => (x._1, transform(x._2))))
+
+    private def find(column: String): Option[Any] =
+      row.find(_._1.equalsIgnoreCase(column)).map(_._2)
+
+    private def transform(value: Any): JsonAst.JsonValue =
+      value match {
+
+        case null => JsonAst.JsonNull
+        case x: Boolean => JsonAst.JsonBoolean(x)
+        case x: Byte => JsonAst.JsonNumberByte(x)
+        case x: Short => JsonAst.JsonNumberShort(x)
+        case x: Integer => JsonAst.JsonNumberInt(x)
+        case x: Long => JsonAst.JsonNumberLong(x)
+        case x: Float => JsonAst.JsonNumberFloat(x)
+        case x: Double => JsonAst.JsonNumberDouble(x)
+        case x: Char => JsonAst.JsonString(x.toString)
+        case x: String => JsonAst.JsonString(x)
+        case x: BigDecimal => JsonAst.JsonNumberBigDecimal(x)
+        case x: LocalDate => JsonAst.JsonString(x.toString)
+        case x: LocalTime => JsonAst.JsonString(x.toString)
+        case x: LocalDateTime => JsonAst.JsonString(x.toString)
+
+        case x: Seq[_] if (x.forall(_.isInstanceOf[Byte])) =>
+          JsonAst.JsonString(Hex.encode(x.map(_.asInstanceOf[Byte])))
+
+        case _ =>
+          throw new IllegalArgumentException(
+            s"Cannot build JSON AST with value $value (${value.getClass.getName}).")
+      }
+  }
+
+  private class QueryImpl(clause: String, parameters: Map[String, Any])
+    extends Query {
+
+    def this(clause: String) =
+      this(clause, Map.empty)
+
+    def on[T](key: String, value: T)(implicit writer: FieldWriter[T]): Query =
+      new QueryImpl(clause, parameters + (key -> writer(key, value).get))
+
+    def execute[R <: Result : ClassTag](): R =
+      Executor.this.execute[R](clause, parameters)
   }
 }

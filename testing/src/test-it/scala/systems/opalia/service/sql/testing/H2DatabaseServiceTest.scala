@@ -69,8 +69,7 @@ class H2DatabaseServiceTest
 
     Await.result(bootloader.awaitUp(), Duration.Inf)
 
-    val databaseService = serviceManager.getService(bootloader.bundleContext, classOf[DatabaseService])
-    transactional = databaseService.newTransactional()
+    transactional = serviceManager.getService(bootloader.bundleContext, classOf[DatabaseService])
   }
 
   override final def afterAll(): Unit = {
@@ -83,7 +82,7 @@ class H2DatabaseServiceTest
     Await.result(bootloader.awaitDown(), Duration.Inf)
   }
 
-  private def executeMultiline(statements: String)(implicit executor: Executor): Unit = {
+  private def executeMultiline(factory: QueryFactory, statements: String): Unit = {
 
     statements.split(""";\n""")
       .map(_.trim)
@@ -91,7 +90,8 @@ class H2DatabaseServiceTest
       .foreach {
         statement =>
 
-          Query(statement)
+          factory
+            .newQuery(statement)
             .execute[IgnoredResult]()
       }
   }
@@ -99,9 +99,10 @@ class H2DatabaseServiceTest
   override def beforeEach(): Unit = {
 
     transactional.withTransaction {
-      implicit executor =>
+      factory =>
 
         executeMultiline(
+          factory,
           """
             |CREATE TABLE _Person (
             |  id INT NOT NULL,
@@ -156,6 +157,7 @@ class H2DatabaseServiceTest
           """.stripMargin)
 
         executeMultiline(
+          factory,
           """
             |INSERT INTO _Person (id, name, counter) VALUES (1, 'Armin', 25);
             |INSERT INTO _Person (id, name, counter) VALUES (2, 'Folker', 28);
@@ -197,9 +199,10 @@ class H2DatabaseServiceTest
   override def afterEach(): Unit = {
 
     transactional.withTransaction {
-      implicit executor =>
+      factory =>
 
         executeMultiline(
+          factory,
           """
             |DROP TABLE _Relationship;
             |DROP TABLE _Membership;
@@ -213,10 +216,10 @@ class H2DatabaseServiceTest
   it should "be able to make a query with multiple arguments" in {
 
     transactional.withTransaction {
-      implicit executor =>
+      factory =>
 
         val result =
-          Query(
+          factory.newQuery(
             """
               |SELECT P2.name AS name
               |FROM _Person P1
@@ -240,10 +243,10 @@ class H2DatabaseServiceTest
   it should "be able to convert result rows to JSON" in {
 
     transactional.withTransaction {
-      implicit executor =>
+      factory =>
 
         val result1 =
-          Query(
+          factory.newQuery(
             """
               |SELECT P2.name AS name, P2.counter AS counter
               |FROM _Person P1
@@ -259,7 +262,7 @@ class H2DatabaseServiceTest
             .transform(row => row.toJson)
 
         val result2 =
-          Query(
+          factory.newQuery(
             """
               |SELECT R2.name AS name, R2.friend AS friend
               |FROM _Person P1
@@ -289,10 +292,10 @@ class H2DatabaseServiceTest
   it should "handle optional parameters" in {
 
     transactional.withTransaction {
-      implicit executor =>
+      factory =>
 
         val result1 =
-          Query(
+          factory.newQuery(
             """
               |SELECT P1.name AS name, P1.counter AS counter
               |FROM _Person P1
@@ -304,7 +307,7 @@ class H2DatabaseServiceTest
             .execute[SingleOptResult]()
 
         val result2 =
-          Query(
+          factory.newQuery(
             """
               |SELECT P1.name AS name, P1.counter AS counter
               |FROM _Person P1
@@ -316,7 +319,7 @@ class H2DatabaseServiceTest
             .execute[SingleOptResult]()
 
         val result3 =
-          Query(
+          factory.newQuery(
             """
               |SELECT P1.name AS name, P1.counter AS counter
               |FROM _Person P1
@@ -328,7 +331,7 @@ class H2DatabaseServiceTest
             .execute[SingleOptResult]()
 
         val result4 =
-          Query(
+          factory.newQuery(
             """
               |SELECT P1.name AS name, P1.extra AS extra
               |FROM _Person P1
@@ -369,10 +372,10 @@ class H2DatabaseServiceTest
   it should "be able to parse a required number of rows" in {
 
     transactional.withTransaction {
-      implicit executor =>
+      factory =>
 
         val queryExpectEmpty =
-          Query(
+          factory.newQuery(
             """
               |SELECT P1.name AS name
               |FROM _Person P1
@@ -383,7 +386,7 @@ class H2DatabaseServiceTest
             .on("name_1", "Adam")
 
         val queryExpectOne =
-          Query(
+          factory.newQuery(
             """
               |SELECT P1.name AS name
               |FROM _Person P1
@@ -394,7 +397,7 @@ class H2DatabaseServiceTest
             .on("name_1", "Armin")
 
         val queryExpectMultiple =
-          Query(
+          factory.newQuery(
             """
               |SELECT P1.name AS name
               |FROM _Person P1
@@ -446,7 +449,7 @@ class H2DatabaseServiceTest
   it should "be able to convert native types" in {
 
     transactional.withTransaction {
-      implicit executor =>
+      factory =>
 
         val boolean: Boolean = true
         val byte: Byte = 42
@@ -463,7 +466,7 @@ class H2DatabaseServiceTest
         val localDateTime: LocalDateTime = LocalDateTime.now().withNano(0)
         val binary: Seq[Byte] = List(0x00.toByte, 0xFF.toByte, 0xFA.toByte)
 
-        Query(
+        factory.newQuery(
           """
             |INSERT INTO _Values
             |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -485,7 +488,7 @@ class H2DatabaseServiceTest
           .execute[IgnoredResult]()
 
         val result =
-          Query(
+          factory.newQuery(
             """
               |SELECT *
               |FROM _Values
